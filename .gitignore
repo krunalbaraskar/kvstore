@@ -1,0 +1,3 @@
+build/
+*.aof
+*.aof.rewrite.tmp

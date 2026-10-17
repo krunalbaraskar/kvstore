@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y redis-tools netcat-openbsd
+      - name: Release build and unit tests
+        run: |
+          cmake --preset release
+          cmake --build --preset release -j"$(nproc)"
+          ctest --preset release
+      - name: Sanitizer build and unit tests
+        run: |
+          cmake --preset asan
+          cmake --build --preset asan -j"$(nproc)"
+          ctest --preset asan
+      - name: Integration tests (ASan build)
+        run: tests/integration.sh build/asan/kvstore
+      - name: AOF replay check (ASan build)
+        run: tests/replay_check.sh build/asan/kvstore 15
+      - name: Stress test (ASan + UBSan)
+        run: |
+          build/asan/kvstore --port 6380 --aof-file /tmp/stress.aof 2> /tmp/stress.log &
+          sleep 1
+          python3 tests/stress.py --port 6380 --seconds 30
+          kill -TERM %1 && wait %1
+          ! grep -E 'AddressSanitizer|runtime error' /tmp/stress.log
